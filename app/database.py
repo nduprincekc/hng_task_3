@@ -5,6 +5,8 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./profiles.db")
 
+print(f"[DB] Connecting to: {DATABASE_URL[:50]}...")  # logs first 50 chars
+
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 

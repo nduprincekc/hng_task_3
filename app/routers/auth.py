@@ -1,12 +1,13 @@
 import os
 import secrets
 import uuid
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.models import User
+from app.models import User, Profile
 from app.services.github_service import exchange_code_for_token, get_github_user
 from app.services.token_service import (
     generate_access_token,
@@ -201,4 +202,47 @@ async def me(current_user: User = Depends(get_current_user)):
             "role": current_user.role,
             "avatar_url": current_user.avatar_url,
         },
+    }
+
+
+@router.post("/seed-db")
+async def seed_database(db: Session = Depends(get_db)):
+    seed_file = "seed_profiles.json"
+
+    if not os.path.exists(seed_file):
+        raise HTTPException(status_code=404, detail="Seed file not found")
+
+    with open(seed_file, "r") as f:
+        profiles_data = json.load(f)
+
+    count = 0
+    skipped = 0
+
+    for p in profiles_data:
+        existing = db.query(Profile).filter(Profile.name == p["name"]).first()
+        if existing:
+            skipped += 1
+            continue
+
+        profile = Profile(
+            id=p.get("id", str(uuid.uuid4())),
+            name=p["name"],
+            gender=p["gender"],
+            gender_probability=p["gender_probability"],
+            age=p["age"],
+            age_group=p["age_group"],
+            country_id=p["country_id"],
+            country_name=p["country_name"],
+            country_probability=p["country_probability"],
+        )
+        db.add(profile)
+        count += 1
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Seeding complete",
+        "inserted": count,
+        "skipped": skipped,
     }

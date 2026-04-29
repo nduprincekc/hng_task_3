@@ -215,7 +215,9 @@ async def seed_database(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Seed file not found")
 
     with open(seed_file, "r") as f:
-        data = json.load(f)
+        raw = json.load(f)
+        data = raw.get("profiles", raw) if isinstance(raw, dict) else raw
+      #  data = json.load(f)
 
     COUNTRY_CODE_TO_NAME = {
         "NG": "Nigeria", "GH": "Ghana", "KE": "Kenya", "ZA": "South Africa",

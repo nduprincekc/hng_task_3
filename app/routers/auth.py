@@ -1,9 +1,8 @@
 import os
 import secrets
-import hashlib
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request, Depends, HTTPException, Response
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
@@ -18,11 +17,8 @@ from app.services.token_service import (
 from app.middleware.auth_middleware import get_current_user, get_db
 from pydantic import BaseModel
 
-
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# In-memory state store — good enough for single-instance deployment
-# For multi-instance, swap this for Redis
 pending_states: dict = {}
 
 
@@ -30,9 +26,6 @@ def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-# ─────────────────────────────────────────────
-# GET /auth/github  — kick off OAuth
-# ─────────────────────────────────────────────
 @router.get("/github")
 async def redirect_to_github(
     request: Request,
@@ -51,7 +44,6 @@ async def redirect_to_github(
         "created_at": datetime.now(timezone.utc).timestamp(),
     }
 
-    # Clean up states older than 10 minutes
     now = datetime.now(timezone.utc).timestamp()
     stale = [k for k, v in pending_states.items() if now - v["created_at"] > 600]
     for k in stale:
@@ -73,9 +65,6 @@ async def redirect_to_github(
     return RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
 
 
-# ─────────────────────────────────────────────
-# GET /auth/github/callback
-# ─────────────────────────────────────────────
 @router.get("/github/callback")
 async def github_callback(
     request: Request,
@@ -107,7 +96,6 @@ async def github_callback(
 
         github_user = await get_github_user(github_token)
 
-        # Upsert user
         user = db.query(User).filter(User.github_id == str(github_user["id"])).first()
 
         if user:
@@ -137,7 +125,7 @@ async def github_callback(
         access_token = generate_access_token(user)
         refresh_token = generate_refresh_token(user.id, db)
 
-        # ── CLI flow: redirect to local server with tokens in query params ──
+        # CLI flow
         if state_data["is_cli"]:
             cli_redirect = (
                 f"{os.getenv('CLI_REDIRECT_BASE')}:{state_data['cli_port']}/callback"
@@ -145,16 +133,11 @@ async def github_callback(
             )
             return RedirectResponse(cli_redirect)
 
-        # ── Web flow: set HTTP-only cookies ──
-        response = RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/dashboard")
-        cookie_opts = dict(
-            httponly=True,
-            secure=os.getenv("NODE_ENV") == "production",
-            samesite="strict",
+        # Web flow — pass tokens in URL
+        frontend_url = os.getenv("FRONTEND_URL")
+        return RedirectResponse(
+            url=f"{frontend_url}/dashboard?access_token={access_token}&refresh_token={refresh_token}"
         )
-        response.set_cookie("access_token", access_token, max_age=180, **cookie_opts)
-        response.set_cookie("refresh_token", refresh_token, max_age=300, **cookie_opts)
-        return response
 
     except HTTPException:
         raise
@@ -162,9 +145,6 @@ async def github_callback(
         raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
 
 
-# ─────────────────────────────────────────────
-# POST /auth/refresh
-# ─────────────────────────────────────────────
 class RefreshRequest(BaseModel):
     refresh_token: str = None
 
@@ -175,7 +155,6 @@ async def refresh_tokens(
     body: RefreshRequest = None,
     db: Session = Depends(get_db),
 ):
-    # Accept from body (CLI) or cookie (web)
     raw_token = (body.refresh_token if body else None) or request.cookies.get("refresh_token")
 
     if not raw_token:
@@ -186,24 +165,13 @@ async def refresh_tokens(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    response = JSONResponse({
+    return JSONResponse({
         "status": "success",
         "access_token": access_token,
         "refresh_token": new_refresh_token,
     })
 
-    # If web (cookie present), also update cookies
-    if request.cookies.get("refresh_token"):
-        cookie_opts = dict(httponly=True, secure=os.getenv("NODE_ENV") == "production", samesite="strict")
-        response.set_cookie("access_token", access_token, max_age=180, **cookie_opts)
-        response.set_cookie("refresh_token", new_refresh_token, max_age=300, **cookie_opts)
 
-    return response
-
-
-# ─────────────────────────────────────────────
-# POST /auth/logout
-# ─────────────────────────────────────────────
 class LogoutRequest(BaseModel):
     refresh_token: str = None
 
@@ -219,15 +187,9 @@ async def logout(
     if raw_token:
         invalidate_refresh_token(raw_token, db)
 
-    response = JSONResponse({"status": "success", "message": "Logged out successfully"})
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
-    return response
+    return JSONResponse({"status": "success", "message": "Logged out successfully"})
 
 
-# ─────────────────────────────────────────────
-# GET /auth/me
-# ─────────────────────────────────────────────
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
     return {

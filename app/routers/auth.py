@@ -207,7 +207,7 @@ async def me(current_user: User = Depends(get_current_user)):
     }
 
 
-@router.post("/seed-db")
+@router.get("/seed-db")
 async def seed_database(db: Session = Depends(get_db)):
     seed_file = "seed_profiles.json"
 

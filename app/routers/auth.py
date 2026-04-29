@@ -37,8 +37,17 @@ async def redirect_to_github(
     code_challenge_method: str = None,
     port: int = None,
 ):
-    is_cli = code_challenge is not None
-    oauth_state = state or secrets.token_hex(16)
+   if is_cli:
+        client_id = os.getenv("GITHUB_CLI_CLIENT_ID", os.getenv("GITHUB_CLIENT_ID"))
+    else:
+        client_id = os.getenv("GITHUB_CLIENT_ID")
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "user:email",
+        "state": oauth_state,
+    }
 
     pending_states[oauth_state] = {
         "is_cli": is_cli,
@@ -92,10 +101,11 @@ async def github_callback(
             redirect_uri = os.getenv("GITHUB_REDIRECT_URI")
 
         github_token = await exchange_code_for_token(
-            code=code,
-            redirect_uri=redirect_uri,
+           code=code,
+           redirect_uri=redirect_uri,
             code_verifier=code_verifier,
-        )
+            is_cli=state_data["is_cli"],
+)
 
         github_user = await get_github_user(github_token)
 
@@ -264,4 +274,3 @@ async def seed_database(db: Session = Depends(get_db)):
         "total": count + skipped,
     }
 
-    

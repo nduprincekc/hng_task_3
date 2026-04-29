@@ -56,3 +56,4 @@ async def get_github_user(github_access_token: str) -> dict:
         raise ValueError("Failed to fetch GitHub user info")
 
     return response.json()
+    

@@ -2,9 +2,12 @@ import httpx
 import os
 
 
-async def exchange_code_for_token(code: str, redirect_uri: str, code_verifier: str = None, is_cli: bool = False) -> str:
-    import os
-    
+async def exchange_code_for_token(
+    code: str,
+    redirect_uri: str,
+    code_verifier: str = None,
+    is_cli: bool = False
+) -> str:
     if is_cli:
         client_id = os.getenv("GITHUB_CLI_CLIENT_ID", os.getenv("GITHUB_CLIENT_ID"))
         client_secret = os.getenv("GITHUB_CLI_CLIENT_SECRET", os.getenv("GITHUB_CLIENT_SECRET"))
@@ -35,7 +38,7 @@ async def exchange_code_for_token(code: str, redirect_uri: str, code_verifier: s
     if "error" in data:
         raise ValueError(data.get("error_description", "GitHub token exchange failed"))
 
-    return data["access_token"]    
+    return data["access_token"]
 
 
 async def get_github_user(github_access_token: str) -> dict:

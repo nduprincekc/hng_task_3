@@ -1,4 +1,3 @@
-# app/middleware/auth_middleware.py
 from fastapi import Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.database import SessionLocal

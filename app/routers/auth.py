@@ -66,8 +66,18 @@ async def redirect_to_github(
         "state": oauth_state,
     }
 
+    if code_challenge:
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = code_challenge_method or "S256"
+
     query = "&".join(f"{k}={v}" for k, v in params.items())
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
+    github_url = f"https://github.com/login/oauth/authorize?{query}"
+
+    response = RedirectResponse(url=github_url)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 
 @router.get("/github/callback")

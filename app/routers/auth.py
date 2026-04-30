@@ -18,12 +18,12 @@ from app.services.token_service import (
 )
 from app.middleware.auth_middleware import get_current_user, get_db
 from pydantic import BaseModel
-import httpx
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import httpx
 
-limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 pending_states: dict = {}
 
@@ -33,6 +33,7 @@ def utcnow():
 
 
 @router.get("/github")
+@limiter.limit("10/minute")
 async def redirect_to_github(
     request: Request,
     state: str = None,
@@ -199,7 +200,7 @@ async def logout(
 
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
-    return {
+    return JSONResponse(status_code=200, content={
         "status": "success",
         "data": {
             "id": current_user.id,
@@ -208,7 +209,7 @@ async def me(current_user: User = Depends(get_current_user)):
             "role": current_user.role,
             "avatar_url": current_user.avatar_url,
         },
-    }
+    })
 
 
 class CliCallbackRequest(BaseModel):
@@ -261,11 +262,12 @@ async def cli_callback(
         access_token = generate_access_token(user)
         refresh_token = generate_refresh_token(user.id, db)
 
-        return {
+        return JSONResponse(status_code=200, content={
+            "status": "success",
             "access_token": access_token,
             "refresh_token": refresh_token,
             "username": user.username,
-        }
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"CLI login failed: {str(e)}")
@@ -306,9 +308,9 @@ async def seed_database(db: Session = Depends(get_db)):
 
     db.commit()
 
-    return {
+    return JSONResponse(status_code=200, content={
         "status": "success",
         "inserted": count,
         "skipped": skipped,
         "total": count + skipped,
-    }
+    })

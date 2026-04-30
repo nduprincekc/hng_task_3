@@ -208,6 +208,66 @@ async def me(current_user: User = Depends(get_current_user)):
     }
 
 
+class CliCallbackRequest(BaseModel):
+    code: str
+    code_verifier: str
+    redirect_uri: str
+
+
+@router.post("/cli-callback")
+async def cli_callback(
+    body: CliCallbackRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        github_token = await exchange_code_for_token(
+            code=body.code,
+            redirect_uri=body.redirect_uri,
+            code_verifier=body.code_verifier,
+            is_cli=True,
+        )
+
+        github_user = await get_github_user(github_token)
+
+        user = db.query(User).filter(User.github_id == str(github_user["id"])).first()
+
+        if user:
+            user.username = github_user["login"]
+            user.email = github_user.get("email")
+            user.avatar_url = github_user.get("avatar_url")
+            user.last_login_at = utcnow()
+        else:
+            user = User(
+                id=str(uuid.uuid4()),
+                github_id=str(github_user["id"]),
+                username=github_user["login"],
+                email=github_user.get("email"),
+                avatar_url=github_user.get("avatar_url"),
+                role="analyst",
+                is_active=True,
+                last_login_at=utcnow(),
+            )
+            db.add(user)
+
+        db.commit()
+        db.refresh(user)
+
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account is disabled")
+
+        access_token = generate_access_token(user)
+        refresh_token = generate_refresh_token(user.id, db)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "username": user.username,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CLI login failed: {str(e)}")
+
+
 @router.get("/seed-db")
 async def seed_database(db: Session = Depends(get_db)):
     seed_file = "seed_profiles.json"

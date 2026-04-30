@@ -18,12 +18,9 @@ from app.services.token_service import (
 )
 from app.middleware.auth_middleware import get_current_user, get_db
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 import httpx
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-limiter = Limiter(key_func=get_remote_address)
 
 pending_states: dict = {}
 
@@ -33,7 +30,6 @@ def utcnow():
 
 
 @router.get("/github")
-@limiter.limit("10/minute")
 async def redirect_to_github(
     request: Request,
     state: str = None,
@@ -204,10 +200,13 @@ async def me(current_user: User = Depends(get_current_user)):
         "status": "success",
         "data": {
             "id": current_user.id,
+            "github_id": current_user.github_id,
             "username": current_user.username,
             "email": current_user.email,
             "role": current_user.role,
             "avatar_url": current_user.avatar_url,
+            "is_active": current_user.is_active,
+            "created_at": current_user.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if current_user.created_at else None,
         },
     })
 

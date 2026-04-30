@@ -32,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -39,12 +40,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"status": "error", "message": exc.detail}
     )
 
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"status": "error", "message": "Internal server error"}
     )
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -54,12 +57,15 @@ async def log_requests(request: Request, call_next):
     logger.info(f"{request.method} {request.url.path} {response.status_code} {duration}ms")
     return response
 
+
 app.include_router(auth.router)
 app.include_router(profiles.router, prefix="/api")
+
 
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Insighta Labs+ is running"}
+
 
 @app.get("/health")
 def health():

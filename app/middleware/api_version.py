@@ -1,11 +1,10 @@
-from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi import Request, HTTPException
 
 
 async def require_api_version(request: Request):
     version = request.headers.get("X-API-Version")
     if version != "1":
-        return JSONResponse(
+        raise HTTPException(
             status_code=400,
-            content={"status": "error", "message": "API version header required"}
+            detail="API version header required"
         )

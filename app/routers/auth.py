@@ -5,7 +5,7 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import User, Profile
@@ -18,9 +18,12 @@ from app.services.token_service import (
 )
 from app.middleware.auth_middleware import get_current_user, get_db
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import httpx
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 pending_states: dict = {}
 
@@ -29,7 +32,46 @@ def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# ── OPTIONS handlers for CORS preflight ──
+@router.options("/github")
+async def github_options():
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
+@router.options("/github/callback")
+async def github_callback_options():
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
+@router.options("/refresh")
+async def refresh_options():
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
+@router.options("/logout")
+async def logout_options():
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
+# ── GET /auth/github ──
 @router.get("/github")
+@limiter.limit("10/minute")
 async def redirect_to_github(
     request: Request,
     state: str = None,
@@ -75,11 +117,12 @@ async def redirect_to_github(
 
     response = RedirectResponse(url=github_url)
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
 
+# ── GET /auth/github/callback ──
 @router.get("/github/callback")
 async def github_callback(
     request: Request,
@@ -159,6 +202,7 @@ async def github_callback(
         raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
 
 
+# ── POST /auth/refresh ──
 class RefreshRequest(BaseModel):
     refresh_token: str = None
 
@@ -186,6 +230,7 @@ async def refresh_tokens(
     })
 
 
+# ── POST /auth/logout ──
 class LogoutRequest(BaseModel):
     refresh_token: str = None
 
@@ -204,6 +249,7 @@ async def logout(
     return JSONResponse({"status": "success", "message": "Logged out successfully"})
 
 
+# ── GET /auth/me ──
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
     return JSONResponse(status_code=200, content={
@@ -221,6 +267,7 @@ async def me(current_user: User = Depends(get_current_user)):
     })
 
 
+# ── POST /auth/cli-callback ──
 class CliCallbackRequest(BaseModel):
     code: str
     code_verifier: str
@@ -282,6 +329,7 @@ async def cli_callback(
         raise HTTPException(status_code=500, detail=f"CLI login failed: {str(e)}")
 
 
+# ── GET /auth/seed-db ──
 @router.get("/seed-db")
 async def seed_database(db: Session = Depends(get_db)):
     seed_file = "seed_profiles.json"

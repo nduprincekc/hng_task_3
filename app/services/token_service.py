@@ -9,8 +9,8 @@ import uuid
 
 
 JWT_SECRET = os.getenv("JWT_SECRET")
-ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", 180))
-REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", 300))
+ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", 86400))
+REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", 604800))
 ALGORITHM = "HS256"
 
 
@@ -52,10 +52,6 @@ def generate_refresh_token(user_id: str, db: Session) -> str:
 
 
 def rotate_refresh_token(raw_token: str, db: Session):
-    """
-    Validates old refresh token, marks it used, issues new access + refresh token pair.
-    Returns (access_token, new_refresh_token, user) or raises ValueError.
-    """
     token_hash = hash_token(raw_token)
 
     stored = db.query(RefreshToken).filter(
@@ -71,7 +67,6 @@ def rotate_refresh_token(raw_token: str, db: Session):
     if stored.expires_at < utcnow():
         raise ValueError("Refresh token expired")
 
-    # Mark as used immediately before issuing new one
     stored.used_at = utcnow()
     db.commit()
 
@@ -88,8 +83,8 @@ def rotate_refresh_token(raw_token: str, db: Session):
     return access_token, new_refresh_token, user
 
 
-def invalidate_refresh_token(raw_token: str, db: Session):
-    token_hash = hash_token(raw_token)
+def invalidate_refresh_token(token: str, db: Session):
+    token_hash = hash_token(token)
     stored = db.query(RefreshToken).filter(
         RefreshToken.token_hash == token_hash
     ).first()

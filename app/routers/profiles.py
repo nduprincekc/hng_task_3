@@ -219,7 +219,7 @@ async def get_me(
     })
 
 
-# ── POST /api/profiles ──
+# ── POST /api/profiles (admin only) ──
 class CreateProfileRequest(BaseModel):
     name: str
 
@@ -295,6 +295,26 @@ async def create_profile(
     return JSONResponse(status_code=201, content={
         "status": "success",
         "data": format_profile(profile),
+    })
+
+
+# ── DELETE /api/profiles/{id} (admin only) ──
+@router.delete("/profiles/{profile_id}", dependencies=[Depends(require_api_version)])
+def delete_profile(
+    profile_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin")),
+):
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    db.delete(profile)
+    db.commit()
+
+    return JSONResponse(status_code=200, content={
+        "status": "success",
+        "message": "Profile deleted successfully",
     })
 
 

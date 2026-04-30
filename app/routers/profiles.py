@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, desc
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models import Profile, User
@@ -47,10 +48,6 @@ COUNTRY_MAP = {
 }
 
 
-# ─────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────
-
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -83,13 +80,11 @@ def format_profile(p: Profile) -> dict:
 
 def build_pagination_links(request: Request, page: int, limit: int, total: int) -> dict:
     base = str(request.url).split("?")[0]
-    # Carry over all existing query params except page/limit
     params = dict(request.query_params)
     params.pop("page", None)
     params.pop("limit", None)
     base_params = "&".join(f"{k}={v}" for k, v in params.items())
     sep = "&" if base_params else ""
-
     total_pages = (total + limit - 1) // limit
 
     def make_url(p):
@@ -130,7 +125,6 @@ def parse_natural_language(q: str) -> Optional[dict]:
     filters = {}
     matched_something = False
 
-    # Gender
     if "male and female" in q_lower or "female and male" in q_lower:
         matched_something = True
     elif "female" in q_lower or "woman" in q_lower or "women" in q_lower or "girls" in q_lower:
@@ -140,7 +134,6 @@ def parse_natural_language(q: str) -> Optional[dict]:
         filters["gender"] = "male"
         matched_something = True
 
-    # Age group
     if "teenager" in q_lower or "teen" in q_lower:
         filters["age_group"] = "teenager"
         matched_something = True
@@ -158,7 +151,6 @@ def parse_natural_language(q: str) -> Optional[dict]:
         filters["max_age"] = 24
         matched_something = True
 
-    # Explicit age expressions
     above_match = re.search(r"(?:above|over|older than)\s+(\d+)", q_lower)
     if above_match:
         filters["min_age"] = int(above_match.group(1))
@@ -175,7 +167,6 @@ def parse_natural_language(q: str) -> Optional[dict]:
         filters["max_age"] = int(between_match.group(2))
         matched_something = True
 
-    # Country
     country_match = re.search(
         r"(?:from|in)\s+([a-z\s\-']+?)(?:\s+(?:above|below|over|under|between|aged|who|with|and)|$)",
         q_lower
@@ -195,10 +186,6 @@ def parse_natural_language(q: str) -> Optional[dict]:
     return filters if matched_something else None
 
 
-# ─────────────────────────────────────────────
-# External API helpers (Stage 1 logic)
-# ─────────────────────────────────────────────
-
 async def fetch_all(name: str):
     async with httpx.AsyncClient(timeout=10.0) as client:
         results = await asyncio.gather(
@@ -214,10 +201,28 @@ COUNTRY_CODE_TO_NAME = {v: k.title() for k, v in COUNTRY_MAP.items()}
 
 
 # ─────────────────────────────────────────────
-# POST /api/profiles  (admin only)
+# GET /api/users/me  (admin + analyst)
 # ─────────────────────────────────────────────
 
-from pydantic import BaseModel
+@router.get("/users/me", dependencies=[Depends(require_api_version)])
+async def get_me(
+    current_user: User = Depends(require_roles("admin", "analyst")),
+):
+    return JSONResponse(status_code=200, content={
+        "status": "success",
+        "data": {
+            "id": current_user.id,
+            "username": current_user.username,
+            "email": current_user.email,
+            "role": current_user.role,
+            "avatar_url": current_user.avatar_url,
+        }
+    })
+
+
+# ─────────────────────────────────────────────
+# POST /api/profiles  (admin only)
+# ─────────────────────────────────────────────
 
 class CreateProfileRequest(BaseModel):
     name: str
@@ -233,7 +238,6 @@ async def create_profile(
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
 
-    # Check if profile already exists
     existing = db.query(Profile).filter(Profile.name == name).first()
     if existing:
         return JSONResponse(status_code=200, content={
@@ -242,7 +246,6 @@ async def create_profile(
             "data": format_profile(existing),
         })
 
-    # Fetch from external APIs concurrently
     results = await fetch_all(name)
 
     for r in results:
@@ -258,7 +261,6 @@ async def create_profile(
     except Exception:
         raise HTTPException(status_code=502, detail="Invalid response from external API")
 
-    # Validate external API responses
     if gender_data.get("gender") is None or gender_data.get("count", 0) == 0:
         raise HTTPException(status_code=422, detail="Insufficient gender data for this name")
 
@@ -269,7 +271,6 @@ async def create_profile(
     if not countries:
         raise HTTPException(status_code=422, detail="Insufficient nationality data for this name")
 
-    # Process
     gender = gender_data["gender"]
     gender_probability = gender_data["probability"]
     age = age_data["age"]
@@ -303,7 +304,7 @@ async def create_profile(
 
 
 # ─────────────────────────────────────────────
-# GET /api/profiles  (admin + analyst)
+# GET /api/profiles
 # ─────────────────────────────────────────────
 
 @router.get("/profiles", dependencies=[Depends(require_api_version)])
@@ -323,7 +324,6 @@ def get_profiles(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "analyst")),
 ):
-    # Validation (unchanged from Stage 2)
     if gender and gender not in VALID_GENDERS:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid query parameters"})
     if age_group and age_group not in VALID_AGE_GROUPS:
@@ -364,7 +364,7 @@ def get_profiles(
 
 
 # ─────────────────────────────────────────────
-# GET /api/profiles/search  (admin + analyst)
+# GET /api/profiles/search
 # ─────────────────────────────────────────────
 
 @router.get("/profiles/search", dependencies=[Depends(require_api_version)])
@@ -382,7 +382,7 @@ def search_profiles(
     filters = parse_natural_language(q)
 
     if filters is None:
-        return JSONResponse(status_code=200, content={"status": "error", "message": "Unable to interpret query"})
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Unable to interpret query"})
 
     query = db.query(Profile)
     query = apply_filters(
@@ -413,7 +413,7 @@ def search_profiles(
 
 
 # ─────────────────────────────────────────────
-# GET /api/profiles/export  (admin + analyst)
+# GET /api/profiles/export
 # ─────────────────────────────────────────────
 
 @router.get("/profiles/export", dependencies=[Depends(require_api_version)])
@@ -444,11 +444,8 @@ def export_profiles(
 
     profiles = query.all()
 
-    # Build CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-
-    # Header row — exact order from spec
     writer.writerow([
         "id", "name", "gender", "gender_probability",
         "age", "age_group", "country_id", "country_name",
@@ -476,7 +473,7 @@ def export_profiles(
 
 
 # ─────────────────────────────────────────────
-# GET /api/profiles/{id}  (admin + analyst)
+# GET /api/profiles/{id}
 # ─────────────────────────────────────────────
 
 @router.get("/profiles/{profile_id}", dependencies=[Depends(require_api_version)])

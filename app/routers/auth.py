@@ -19,7 +19,10 @@ from app.services.token_service import (
 from app.middleware.auth_middleware import get_current_user, get_db
 from pydantic import BaseModel
 import httpx
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 pending_states: dict = {}

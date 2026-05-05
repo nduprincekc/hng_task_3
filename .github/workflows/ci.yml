@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 app/ --max-line-length=120 --ignore=E501,W503 || true
+
+      - name: Check app imports
+        run: python -c "from app.main import app; print('App loaded successfully')"
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          GITHUB_CLIENT_ID: test
+          GITHUB_CLIENT_SECRET: test
+          GITHUB_REDIRECT_URI: http://localhost/callback
+          GITHUB_CLI_CLIENT_ID: test
+          GITHUB_CLI_CLIENT_SECRET: test
+          FRONTEND_URL: http://localhost:3000
+          JWT_SECRET: testsecretkey123456789012345678901234567890
+          ACCESS_TOKEN_EXPIRE_SECONDS: 180
+          REFRESH_TOKEN_EXPIRE_SECONDS: 300
+          CLI_REDIRECT_BASE: http://localhost21

@@ -1,4 +1,3 @@
-# app/middleware/api_version.py
 from fastapi import Request, HTTPException
 
 

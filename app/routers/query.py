@@ -8,8 +8,7 @@ from app.models import Profile
 from app.normalizer import normalize_query, filters_to_sql_conditions
 from app.cache import make_cache_key, cache_get, cache_set
 
-router = APIRouter(prefix="/api", tags=["query"])
-
+router = APIRouter(prefix="/api/v2", tags=["query"])
 
 @router.get("/profiles")
 def list_profiles(

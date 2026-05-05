@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, Index
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, Index, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
@@ -8,19 +8,17 @@ Base = declarative_base()
 class Profile(Base):
     __tablename__ = "profiles"
 
-    # Stage 3 uses uuid7 stored as string
     id = Column(String(36), primary_key=True)
     name = Column(String(255), unique=True, nullable=False, index=True)
     gender = Column(String(50), nullable=False)
     gender_probability = Column(Float, default=0.0)
     age = Column(Integer, nullable=False)
     age_group = Column(String(50), nullable=True)
-    country_id = Column(String(10), nullable=True)    # ISO code e.g. "NG", "GH"
-    country_name = Column(String(100), nullable=True) # full name e.g. "Nigeria"
+    country_id = Column(String(10), nullable=True)
+    country_name = Column(String(100), nullable=True)
     country_probability = Column(Float, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Composite indexes for common filter combinations
     __table_args__ = (
         Index("ix_profiles_country_id_gender", "country_id", "gender"),
         Index("ix_profiles_country_id_gender_age", "country_id", "gender", "age"),
@@ -39,5 +37,17 @@ class User(Base):
     email = Column(String(255), nullable=True)
     avatar_url = Column(Text, nullable=True)
     role = Column(String(50), default="analyst")
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    token_hash = Column(String(255), unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

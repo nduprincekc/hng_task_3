@@ -67,7 +67,7 @@ async def log_requests(request: Request, call_next):
     logger.info(f"{request.method} {request.url.path} {response.status_code} {duration}ms")
     return response
 
-<<<<<<< HEAD
+
 # Stage 3 routers (unchanged)
 app.include_router(auth.router)
 app.include_router(profiles.router, prefix="/api")
@@ -75,12 +75,7 @@ app.include_router(profiles.router, prefix="/api")
 # Stage 4B routers
 app.include_router(query.router)
 app.include_router(ingestion.router)
-=======
 
-app.include_router(auth.router)
-app.include_router(profiles.router, prefix="/api")
-
->>>>>>> 40061c37d2c1a8e444907b3638e477814b423735
 
 @app.get("/")
 def root():

@@ -11,6 +11,8 @@ from app.database import engine
 from app import models
 from app.routers import profiles
 from app.routers import auth
+from app.routers import query
+from app.routers import ingestion
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -44,8 +46,13 @@ async def log_requests(request: Request, call_next):
     logger.info(f"{request.method} {request.url.path} {response.status_code} {duration}ms")
     return response
 
+# Stage 3 routers (unchanged)
 app.include_router(auth.router)
 app.include_router(profiles.router, prefix="/api")
+
+# Stage 4B routers
+app.include_router(query.router)
+app.include_router(ingestion.router)
 
 @app.get("/")
 def root():

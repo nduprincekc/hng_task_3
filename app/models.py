@@ -1,52 +1,43 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Boolean, ForeignKey
-from sqlalchemy.orm import relationship
-from app.database import Base
-from datetime import datetime, timezone
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
 
-
-def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+Base = declarative_base()
 
 
 class Profile(Base):
     __tablename__ = "profiles"
 
-    id = Column(String, primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False, index=True)
-    gender = Column(String, nullable=False)
-    gender_probability = Column(Float, nullable=False)
+    # Stage 3 uses uuid7 stored as string
+    id = Column(String(36), primary_key=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    gender = Column(String(50), nullable=False)
+    gender_probability = Column(Float, default=0.0)
     age = Column(Integer, nullable=False)
-    age_group = Column(String, nullable=False)
-    country_id = Column(String(2), nullable=False, index=True)
-    country_name = Column(String, nullable=False)
-    country_probability = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=utcnow)
+    age_group = Column(String(50), nullable=True)
+    country_id = Column(String(10), nullable=True)    # ISO code e.g. "NG", "GH"
+    country_name = Column(String(100), nullable=True) # full name e.g. "Nigeria"
+    country_probability = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Composite indexes for common filter combinations
+    __table_args__ = (
+        Index("ix_profiles_country_id_gender", "country_id", "gender"),
+        Index("ix_profiles_country_id_gender_age", "country_id", "gender", "age"),
+        Index("ix_profiles_country_name_gender", "country_name", "gender"),
+        Index("ix_profiles_gender_age", "gender", "age"),
+        Index("ix_profiles_age_group", "age_group"),
+    )
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(String, primary_key=True, index=True)
-    github_id = Column(String, unique=True, nullable=False)
-    username = Column(String, nullable=False)
-    email = Column(String, nullable=True)
-    avatar_url = Column(String, nullable=True)
-    role = Column(String, nullable=False, default="analyst")  # admin or analyst
-    is_active = Column(Boolean, nullable=False, default=True)
-    last_login_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=utcnow)
-
-    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete")
-
-
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
-
-    id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    token_hash = Column(String, unique=True, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    used_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=utcnow)
-
-    user = relationship("User", back_populates="refresh_tokens")
+    id = Column(String(36), primary_key=True)
+    github_id = Column(String(100), unique=True, nullable=False)
+    username = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    avatar_url = Column(Text, nullable=True)
+    role = Column(String(50), default="analyst")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
